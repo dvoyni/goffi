@@ -8,6 +8,7 @@ package dl
 /*
 #cgo LDFLAGS: -ldl
 #include <dlfcn.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -44,11 +45,13 @@ static void goffi_cgo_free(char* value) {
 	free(value);
 }
 
+// <errno.h> declares the accessor under any feature-test macros, so a C
+// library without it fails the link instead of leaving errno capture off.
 static uintptr_t goffi_errno_addr(void) {
 #ifdef __ANDROID__
-	return (uintptr_t)dlsym(RTLD_DEFAULT, "__errno");
+	return (uintptr_t)&__errno;
 #else
-	return (uintptr_t)dlsym(RTLD_DEFAULT, "__errno_location");
+	return (uintptr_t)&__errno_location;
 #endif
 }
 */
@@ -87,8 +90,9 @@ func Dlsym(handle uintptr, name string) (uintptr, error) {
 	return uintptr(result.value), nil
 }
 
-// Dlclose intentionally retains process-lifetime mappings, matching the
-// no-cgo implementation's RTLD_NODELETE policy.
+// Dlclose returns nil and leaves the library loaded, as the no-cgo
+// implementations do: unloading is not implemented yet on Linux, and on
+// Android ffi.LoadLibrary opens every library with RTLD_NODELETE.
 func Dlclose(uintptr) error { return nil }
 
 func takeDlerror(msg *C.char) string {
@@ -99,8 +103,8 @@ func takeDlerror(msg *C.char) string {
 	return C.GoString(msg)
 }
 
-// ErrnoAddr resolves the errno accessor for the syscall package: Bionic's
-// __errno on Android, __errno_location on glibc and musl.
+// ErrnoAddr returns the address of the errno accessor for the syscall
+// package: Bionic's __errno on Android, __errno_location on glibc and musl.
 // The returned address is called by syscallN immediately after the target C
 // function, while execution remains on the same OS thread.
 func ErrnoAddr() uintptr {
